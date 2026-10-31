@@ -1,5 +1,7 @@
 # Latex Voron 2.4 3D printer: laser-assisted 3D printing of water-based latex
 
+[![DOI](https://zenodo.org/badge/1441220944.svg)](https://doi.org/10.5281/zenodo.23845520)
+
 Open hardware notes, firmware configuration and software for a **Voron 2.4 (350 mm)** converted into a **syringe-extrusion printer with laser curing** of water-based latex. The latex is deposited as a bead and cured in place by a diode laser whose spot trails the nozzle by about 1 mm.
 
 This repository accompanies a TDK research paper (BME, Department of Polymer Engineering):
