@@ -1,0 +1,1054 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Latex Laser Post-Processor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..100,400..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: instrument panel. Settings rail on the left, work surface (file, readouts, toolpath plot, output) on the right; stacks on phones. */
+:root {
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --line: #d6dae3;
+  --fg: #151821;
+  --dim: #5a6072;
+  --laser: #4b3fe0;          /* 450 nm blue-violet: cured bead */
+  --laser-soft: #e7e5fd;
+  --warn: #c05a0c;           /* off-axis: spot misses */
+  --bad: #c4243b;            /* printed toward the laser */
+  --good: #187a3c;
+  --travel: #a5abba;
+  --bead-off: #8a90a2;
+  --grid: #e3e6ed;
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1116; --panel: #171a21; --line: #2a2f3b; --fg: #e6e8ee; --dim: #99a0b2;
+    --laser: #8f87ff; --laser-soft: #25224a; --warn: #f39a52; --bad: #ff6b7f; --good: #52d27f;
+    --travel: #485064; --bead-off: #6d7487; --grid: #1f232c; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1116; --panel: #171a21; --line: #2a2f3b; --fg: #e6e8ee; --dim: #99a0b2;
+  --laser: #8f87ff; --laser-soft: #25224a; --warn: #f39a52; --bad: #ff6b7f; --good: #52d27f;
+  --travel: #485064; --bead-off: #6d7487; --grid: #1f232c; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+h1 {
+  font-family: var(--display); font-stretch: 70%; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .01em; font-size: clamp(26px, 4vw, 38px); line-height: 1; margin: 0; text-wrap: balance;
+}
+.sub { color: var(--dim); margin: 6px 0 0; max-width: 62ch; }
+.axis-chip {
+  display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px;
+  border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 12px;
+}
+.axis-chip svg { width: 18px; height: 18px; }
+
+.grid { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+aside.panel { padding: 16px; display: grid; gap: 14px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+@media (max-width: 860px) { aside.panel { position: static; order: 2; } }
+.label-sm {
+  font-family: var(--display); font-stretch: 75%; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; font-size: 12px; color: var(--dim);
+}
+fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; }
+legend { padding: 0; margin-bottom: 4px; }
+.field { display: grid; grid-template-columns: minmax(0, 1fr) 96px; align-items: center; gap: 8px; }
+.field label { font-size: 13px; }
+.field small { display: block; color: var(--dim); font-size: 11.5px; line-height: 1.3; }
+input[type=number], input[type=text] {
+  width: 100%; font: 13px var(--mono); color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-variant-numeric: tabular-nums;
+}
+input:focus-visible, button:focus-visible, .seg button:focus-visible, label.drop:focus-within {
+  outline: 2px solid var(--laser); outline-offset: 2px;
+}
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.check input { margin-top: 3px; accent-color: var(--laser); }
+.rule { height: 1px; background: var(--line); }
+.reset { justify-self: start; }
+
+button {
+  font: 600 13px var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 7px; padding: 8px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--dim); }
+button.primary { background: var(--laser); border-color: var(--laser); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+main { display: grid; gap: 18px; min-width: 0; }
+label.drop {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px;
+  border: 1.5px dashed var(--line); border-radius: 10px; background: var(--panel); cursor: pointer;
+}
+label.drop.over { border-color: var(--laser); background: var(--laser-soft); }
+label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop-text { flex: 1 1 260px; min-width: 0; }
+.fname { font: 600 14px var(--mono); overflow-wrap: anywhere; }
+.drop-hint { color: var(--dim); font-size: 12.5px; }
+.pill {
+  display: inline-block; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em;
+  padding: 2px 8px; border-radius: 999px; background: var(--laser-soft); color: var(--laser); vertical-align: 2px; margin-left: 6px;
+}
+.drop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1000px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat { padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.stat .v { font: 600 22px var(--mono); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stat .d { color: var(--dim); font-size: 12px; }
+.stat.lead { border-left: 4px solid var(--state, var(--line)); }
+.state-chip {
+  font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; justify-self: start;
+  padding: 2px 7px; border-radius: 4px; color: var(--state); border: 1px solid var(--state);
+}
+.warnings { display: grid; gap: 6px; }
+.warnings:empty { display: none; }
+.warn-row {
+  font-size: 13px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--warn); color: var(--fg);
+  background: color-mix(in srgb, var(--warn) 9%, var(--panel));
+}
+.warn-row b { color: var(--warn); }
+
+.plot { padding: 12px; display: grid; gap: 10px; }
+.plot-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 6px 12px; background: var(--panel); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--panel); }
+.layer-ctl { display: flex; align-items: center; gap: 10px; flex: 1 1 240px; min-width: 0; }
+.layer-ctl input { flex: 1; accent-color: var(--laser); min-width: 80px; }
+.layer-ctl output { font: 12px var(--mono); color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.canvas-box { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 8px; overflow: hidden; background: var(--bg); border: 1px solid var(--line); }
+@media (max-width: 600px) { .canvas-box { aspect-ratio: 4 / 3; } }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--dim); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+
+.out { padding: 14px; display: grid; gap: 10px; }
+.out-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.out-note { color: var(--dim); font-size: 12.5px; flex: 1 1 240px; min-width: 0; }
+.toast { font: 12.5px var(--mono); color: var(--good); min-height: 1em; }
+.toast.err { color: var(--bad); }
+.code { overflow-x: auto; max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+pre { margin: 0; padding: 10px 12px; font: 12px/1.55 var(--mono); white-space: pre; }
+pre .on { color: var(--laser); font-weight: 600; }
+pre .off { color: var(--dim); font-weight: 600; }
+pre .ins { color: var(--warn); }
+pre .cm { color: var(--travel); }
+details summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+.power-row { display: flex; align-items: center; gap: 10px; }
+.power-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--laser); }
+.power-row input[type=number] { width: 72px; }
+.power-row .unit { font: 13px var(--mono); color: var(--dim); }
+.big-power input[type=number] { font-size: 18px; font-weight: 600; padding: 6px 8px; }
+.s-read { font: 12px var(--mono); color: var(--dim); font-variant-numeric: tabular-nums; }
+.s-read.over { color: var(--bad); }
+.objs { padding: 14px; display: grid; gap: 12px; }
+.obj-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.obj-head .drop-hint { flex: 1 1 220px; min-width: 0; }
+.obj-list { display: grid; gap: 8px; }
+.obj-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 2fr) 72px 92px; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.obj-row:first-child { border-top: 0; }
+.obj-row input[type=range] { accent-color: var(--laser); min-width: 0; width: 100%; }
+.obj-name { font: 13px var(--mono); overflow-wrap: anywhere; min-width: 0; }
+.obj-row .s-read { text-align: right; }
+.obj-row.inherit input[type=number] { color: var(--dim); font-style: italic; }
+.obj-tag { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--dim); }
+@media (max-width: 600px) {
+  .obj-row { grid-template-columns: minmax(0, 1fr) 72px 84px; }
+  .obj-row input[type=range] { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Latex Laser Post-Processor</h1>
+      <p class="sub">Rewrites OrcaSlicer G-code so every bead is laid toward the allowed direction with the curing spot trailing the nozzle, and switches the laser on only while extruding.</p>
+    </div>
+    <div class="axis-chip" title="Allowed print direction">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><g id="axisArrow" transform="rotate(0 12 12)"><path d="M3 12h15" stroke="currentColor" stroke-width="2" fill="none"/><path d="M14 7l6 5-6 5" stroke="currentColor" stroke-width="2" fill="none"/></g></svg>
+      <span id="axisText">print toward X+ · spot 1.0 mm behind</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <aside class="panel" aria-label="Settings">
+      <fieldset>
+        <legend class="label-sm">Laser power</legend>
+        <div class="power-row big-power">
+          <input id="power" type="range" min="0" max="100" step="0.5" aria-label="Laser power, percent duty">
+          <input id="powerNum" type="number" min="0" max="100" step="0.5" aria-label="Laser power, percent duty">
+          <span class="unit">%</span>
+        </div>
+        <div class="s-read" id="powerRead">–</div>
+        <div class="field"><label for="dutyCap">Macro duty cap<small>max_duty in your LASER_PWM macro (1.0 = no cap)</small></label><input id="dutyCap" type="number" step="0.05" min="0.01" max="1"></div>
+      </fieldset>
+      <div class="rule"></div>
+      <fieldset>
+        <legend class="label-sm">Direction</legend>
+        <div class="field"><label for="prefDir">Allowed direction<small>deg CCW from X+ (spot → nozzle)</small></label><input id="prefDir" type="number" step="1"></div>
+        <div class="field"><label for="perpTol">Perpendicular tolerance<small>deg; near-perpendicular moves never split a run</small></label><input id="perpTol" type="number" step="1" min="0" max="45"></div>
+        <div class="field"><label for="minRun">Minimum run<small>mm; shorter pieces are not split off</small></label><input id="minRun" type="number" step="0.1" min="0"></div>
+      </fieldset>
+      <div class="rule"></div>
+      <fieldset>
+        <legend class="label-sm">Laser</legend>
+        <div class="field"><label for="overrun">Spot offset / overrun<small>mm the spot trails the nozzle</small></label><input id="overrun" type="number" step="0.1" min="0"></div>
+        <div class="field"><label for="defWidth">Bead width fallback<small>mm, if the file has no ;WIDTH:</small></label><input id="defWidth" type="number" step="0.05" min="0.05"></div>
+        <div class="field"><label for="pwmCmd">PWM macro<small>sets beam power only, never the power pin</small></label><input id="pwmCmd" type="text"></div>
+        <label class="check"><input id="addPower" type="checkbox"><span>Switch laser power on at start, off at end<small style="display:block;color:var(--dim);font-size:11.5px">Adds the macros below once each, only if the file doesn't already have them</small></span></label>
+        <div class="field"><label for="armCmd">Power on macro</label><input id="armCmd" type="text"></div>
+        <div class="field"><label for="disarmCmd">Power off macro</label><input id="disarmCmd" type="text"></div>
+      </fieldset>
+      <div class="rule"></div>
+      <fieldset>
+        <legend class="label-sm">Inserted travels</legend>
+        <div class="field"><label for="zhop">Z-hop<small>mm; 0 = none</small></label><input id="zhop" type="number" step="0.1" min="0"></div>
+        <div class="field"><label for="travelF">Travel feed<small>mm/min</small></label><input id="travelF" type="number" step="100" min="60"></div>
+        <label class="check"><input id="retract" type="checkbox"><span>Firmware retract (G10 / G11)<small style="display:block;color:var(--dim);font-size:11.5px">Off removes every G10/G11, including Orca's. Turn on only if Klipper has [firmware_retraction].</small></span></label>
+      </fieldset>
+      <div class="rule"></div>
+      <fieldset>
+        <legend class="label-sm">Prime before first bead</legend>
+        <label class="check"><input id="prime" type="checkbox"><span>Prime the syringe<small style="display:block;color:var(--dim);font-size:11.5px">Takes up plunger backlash, then draws a laser-off purge line</small></span></label>
+        <div class="field"><label for="primeE">Take-up<small>virtual mm, extruded in place</small></label><input id="primeE" type="number" step="5" min="0"></div>
+        <div class="field"><label for="purgeLen">Purge line length<small>mm, toward X+</small></label><input id="purgeLen" type="number" step="5" min="0"></div>
+        <div class="field"><label for="purgeX">Purge start X<small>mm, your X minimum is 50</small></label><input id="purgeX" type="number" step="1"></div>
+        <div class="field"><label for="purgeY">Purge start Y<small>mm, keep clear of the part</small></label><input id="purgeY" type="number" step="1"></div>
+        <div class="field"><label for="xMin">Bed X minimum<small>mm; moves below this are flagged</small></label><input id="xMin" type="number" step="1"></div>
+      </fieldset>
+      <button class="reset" id="resetBtn" type="button">Reset to defaults</button>
+    </aside>
+
+    <main>
+      <label class="drop" id="drop">
+        <input id="file" type="file" accept=".gcode,.gco,.g,.nc,.txt">
+        <div class="drop-text">
+          <div class="fname" id="fname">sample_bar.gcode <span class="pill">Sample</span></div>
+          <div class="drop-hint" id="fhint">Example part: 30 × 8 mm bar, one wall plus X raster, 2 layers. Drop your Orca export here or choose a file.</div>
+        </div>
+        <span class="drop-actions">
+          <button type="button" class="primary" id="pickBtn">Choose G-code</button>
+          <button type="button" id="sampleBtn">Load sample</button>
+        </span>
+      </label>
+
+      <section class="stats" aria-label="Results">
+        <div class="panel stat lead" id="covTile">
+          <span class="label-sm">Laser coverage</span>
+          <span class="v" id="sCov">–</span>
+          <span class="state-chip" id="sCovChip">–</span>
+          <span class="d" id="sCovD">share of bead the trailing spot can reach</span>
+        </div>
+        <div class="panel stat">
+          <span class="label-sm">Extrusion</span>
+          <span class="v" id="sE">–</span>
+          <span class="d" id="sED">virtual mm in → out</span>
+        </div>
+        <div class="panel stat">
+          <span class="label-sm">Laser runs</span>
+          <span class="v" id="sRuns">–</span>
+          <span class="d" id="sRunsD">LASER_ON … LASER_OFF blocks</span>
+        </div>
+        <div class="panel stat">
+          <span class="label-sm">Added travels</span>
+          <span class="v" id="sTrav">–</span>
+          <span class="d" id="sTravD">return moves inserted</span>
+        </div>
+      </section>
+      <div class="warnings" id="warnings" aria-live="polite"></div>
+
+      <section class="panel objs" id="objPanel" aria-label="Laser power per object" hidden>
+        <div class="obj-head">
+          <span class="label-sm">Power per object</span>
+          <span class="drop-hint" id="objHint">Objects follow the default power until you change them.</span>
+          <button type="button" id="objReset">All to default</button>
+        </div>
+        <div class="obj-list" id="objList"></div>
+      </section>
+
+      <section class="panel plot" aria-label="Toolpath preview">
+        <div class="plot-bar">
+          <span class="seg" role="group" aria-label="Show">
+            <button type="button" id="viewBefore" aria-pressed="false">Orca original</button>
+            <button type="button" id="viewAfter" aria-pressed="true">Processed</button>
+          </span>
+          <span class="layer-ctl">
+            <label for="layer" class="label-sm">Layer</label>
+            <input id="layer" type="range" min="0" max="0" value="0">
+            <output id="layerOut" for="layer">–</output>
+          </span>
+        </div>
+        <div class="canvas-box"><canvas id="cv" aria-label="Top view of the selected layer"></canvas></div>
+        <div class="legend">
+          <span><i style="background:var(--laser)"></i>cured: forward, spot on bead</span>
+          <span><i style="background:var(--warn)"></i>forward but too oblique, spot misses</span>
+          <span><i style="background:var(--bad)"></i>printed toward the laser</span>
+          <span><i style="background:var(--bead-off)"></i>extruded with laser off</span>
+          <span><i style="background:var(--travel)"></i>travel</span>
+        </div>
+      </section>
+
+      <section class="panel out" aria-label="Output">
+        <div class="out-bar">
+          <button type="button" class="primary" id="saveBtn">Save processed G-code</button>
+          <button type="button" id="copyBtn">Copy</button>
+          <span class="out-note" id="saveNote">Saved as <code>.gcode.txt</code> because the viewer only allows certain file types. Remove <code>.txt</code> before uploading to Mainsail.</span>
+        </div>
+        <div class="toast" id="toast" role="status"></div>
+        <details>
+          <summary id="outSummary">Output preview</summary>
+          <div class="code"><pre id="outPre"></pre></div>
+        </details>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const DEFAULTS = { power: 25, dutyCap: 1.0, prefDir: 0, perpTol: 10, minRun: 1.0, overrun: 1.0, defWidth: 0.6,
+    pwmCmd: "LASER_PWM", addPower: true, armCmd: "LASER_ARM", disarmCmd: "LASER_DISARM",
+    zhop: 1.0, travelF: 9000, retract: false,
+    prime: true, primeE: 40, purgeLen: 50, purgeX: 50, purgeY: 320, xMin: 50 };
+  const KEYS = Object.keys(DEFAULTS);
+  const STORE = "latexLaserPP.settings.v3";
+  const BREAK_TAGS = [";TYPE:", "; FEATURE:", ";LAYER_CHANGE", ";LAYER:", "; CHANGE_LAYER"];
+
+  const state = { srcName: "sample_bar.gcode", srcLines: [], out: [], stats: null, objects: [], objPct: new Map(),
+    view: "after", layers: { before: [], after: [] }, bounds: null, isSample: true };
+
+  // ---------- settings ----------
+  function loadSettings() {
+    let s = {};
+    try {
+      const v3 = localStorage.getItem(STORE);
+      if (v3) s = JSON.parse(v3) || {};
+      else {
+        // carry older settings over, but take the new purge position and laser macros
+        s = JSON.parse(localStorage.getItem("latexLaserPP.settings.v2") || localStorage.getItem("latexLaserPP.settings.v1") || "{}") || {};
+        for (const k of ["retract", "purgeX", "purgeY", "onCmd", "offCmd"]) delete s[k];
+      }
+    } catch (e) { s = {}; }
+    for (const k of KEYS) {
+      const v = k in s ? s[k] : DEFAULTS[k];
+      const el = $(k);
+      if (el.type === "checkbox") el.checked = !!v; else el.value = v;
+    }
+  }
+  function readSettings() {
+    const o = {};
+    for (const k of KEYS) {
+      const el = $(k);
+      if (el.type === "checkbox") o[k] = el.checked;
+      else if (el.type === "text") o[k] = el.value.trim() || DEFAULTS[k];
+      else { const n = parseFloat(el.value); o[k] = Number.isFinite(n) ? n : DEFAULTS[k]; }
+    }
+    try { localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) {}
+    o.power = Math.min(100, Math.max(0, o.power));
+    o.dutyCap = Math.min(1, Math.max(0.01, o.dutyCap));
+    o.objPct = state.objPct;
+    return o;
+  }
+
+  // ---------- G-code parsing ----------
+  function parse(line) {
+    const code = line.split(";")[0].trim();
+    if (!code) return [null, {}];
+    const parts = code.split(/\s+/);
+    const p = {};
+    for (let i = 1; i < parts.length; i++) {
+      const t = parts[i];
+      const eq = t.indexOf("=");
+      // "X12.5" (G-code word) or "S=153" (Klipper macro parameter)
+      const k = eq > 0 ? t.slice(0, eq) : t[0];
+      const rest = eq > 0 ? t.slice(eq + 1) : t.slice(1);
+      if (!rest) continue;
+      const n = Number(rest);
+      if (Number.isFinite(n)) p[k.toUpperCase()] = n;
+    }
+    return [parts[0].toUpperCase(), p];
+  }
+  const has = (p, k) => Object.prototype.hasOwnProperty.call(p, k);
+  const segLen = (s) => Math.hypot(s[2] - s[0], s[3] - s[1]);
+
+  // ---------- laser power ----------
+  // UI percent = real PWM duty. Macro: duty = S/255 * max_duty  ->  S = pct/100 / max_duty * 255
+  function sFromPct(pct, cap) {
+    const s = Math.min(255, Math.max(0, pct / 100 / cap * 255));
+    return String(Math.round(s * 100) / 100);
+  }
+  function listObjects(lines) {
+    const seen = new Set(), out = [];
+    for (const l of lines) {
+      const m = l.match(/^\s*EXCLUDE_OBJECT_(?:DEFINE|START)\b.*?NAME=(\S+)/i);
+      if (m && !seen.has(m[1])) { seen.add(m[1]); out.push(m[1]); }
+    }
+    return out;
+  }
+  const prettyName = (n) => n.replace(/_id_\d+_copy_\d+$/i, "").replace(/_/g, " ");
+
+  // ---------- the post-processor ----------
+  // Two positions are tracked: (x, y) is where Orca believes the nozzle is; (ax, ay) is where it
+  // really is in the rewritten file. Whenever an extrusion, arc or single-axis move depends on
+  // its start point and the two differ, a travel to Orca's position is inserted first.
+  function processGcode(lines, o) {
+    const UX = Math.cos(o.prefDir * Math.PI / 180), UY = Math.sin(o.prefDir * Math.PI / 180);
+    const SIN_TOL = Math.sin(o.perpTol * Math.PI / 180);
+    const RETRACT = o.retract ? ["G10", "G11"] : null;
+    const PWM = o.pwmCmd.toUpperCase();
+    const OFF = `${o.pwmCmd} S=0`;
+    const firstTok = (l) => l.split(";")[0].trim().split(/\s+/)[0].toUpperCase();
+    const fileHasArm = lines.some((l) => firstTok(l) === o.armCmd.toUpperCase());
+    const fileHasDisarm = lines.some((l) => firstTok(l) === o.disarmCmd.toUpperCase());
+    const out = [`${OFF} ; unidir_laser: safe start (PWM only)`];
+    let x = 0, y = 0, z = 0, feed = 1200;      // Orca's idea of the position
+    let ax = 0, ay = 0;                         // real position in the output
+    let chain = [], chainComments = [];
+    let curObj = null, width = o.defWidth;
+    let primed = !o.prime || lines.some((l) => l.startsWith("; unidir_laser: prime")), armed = fileHasArm || !o.addPower;
+    const st = { eIn: 0, runs: 0, travels: 0, travelMm: 0, restores: 0, covOk: 0, covAll: 0,
+      warnings: new Set(), pctUsed: new Set(), stripped: 0, primeLine: 0, primeTotal: 0,
+      hadG10: false, armAdded: false, disarmAdded: false, fileHasArm, legacyLaser: 0 };
+
+    const classify = (s) => {
+      const L = segLen(s);
+      if (L < 1e-9) return 0;
+      const c = ((s[2] - s[0]) * UX + (s[3] - s[1]) * UY) / L;
+      if (Math.abs(c) < SIN_TOL) return 0;
+      return c > 0 ? 1 : -1;
+    };
+    const runLen = (segs) => { let t = 0; for (const s of segs) t += segLen(s); return t; };
+    const pushAll = (dst, src) => { for (const s of src) dst.push(s); };
+
+    function splitRuns(ch) {
+      let runs = [];
+      for (const s of ch) {
+        const k = classify(s);
+        const last = runs[runs.length - 1];
+        if (last && (k === 0 || last[0] === 0 || last[0] === k)) {
+          if (last[0] === 0) last[0] = k;
+          last[1].push(s);
+        } else runs.push([k, [s]]);
+      }
+      let changed = true;
+      while (changed && runs.length > 1) {
+        changed = false;
+        for (let i = 1; i < runs.length; i++) {
+          if (runLen(runs[i][1]) < o.minRun) {
+            pushAll(runs[i - 1][1], runs[i][1]);
+            runs.splice(i, 1);
+            changed = true;
+            break;
+          }
+        }
+        const merged = [runs[0]];
+        for (const r of runs.slice(1)) {
+          const m = merged[merged.length - 1];
+          if (r[0] === m[0] || r[0] === 0) pushAll(m[1], r[1]); else merged.push(r);
+        }
+        runs = merged;
+      }
+      return runs.map(([k, segs]) => k < 0
+        ? segs.slice().reverse().map((s) => [s[2], s[3], s[0], s[1], s[4], s[5]])
+        : segs);
+    }
+
+    function travel(tx, ty) {
+      if (RETRACT) out.push(RETRACT[0]);
+      if (o.zhop > 0) out.push(`G1 Z${(z + o.zhop).toFixed(3)} F${o.travelF}`);
+      out.push(`G1 X${tx.toFixed(3)} Y${ty.toFixed(3)} F${o.travelF}`);
+      if (o.zhop > 0) out.push(`G1 Z${z.toFixed(3)} F${o.travelF}`);
+      if (RETRACT) out.push(RETRACT[1]);
+      st.travels++; st.travelMm += Math.hypot(tx - ax, ty - ay);
+      ax = tx; ay = ty;
+    }
+    // travel to (tx, ty) if the nozzle is not already there; true if a travel was added
+    function ensureAt(tx, ty) {
+      if (Math.hypot(tx - ax, ty - ay) <= 1e-3) return false;
+      travel(tx, ty);
+      return true;
+    }
+    const pwmFor = () => {
+      const pct = curObj !== null && o.objPct.has(curObj) && o.objPct.get(curObj) !== null ? o.objPct.get(curObj) : o.power;
+      st.pctUsed.add(pct);
+      return `${o.pwmCmd} S=${sFromPct(pct, o.dutyCap)}`;
+    };
+
+    function prime() {
+      primed = true;
+      const h = z > 0 ? z : 0.6, w = Math.max(width, h);
+      const area = (w - h) * h + Math.PI * h * h / 4;
+      const ePurge = o.purgeLen * area / (Math.PI * 0.875 * 0.875);
+      out.push("; unidir_laser: prime (laser PWM 0)");
+      out.push(`G1 Z${(z + 5).toFixed(3)} F600`);
+      out.push(`G1 X${o.purgeX.toFixed(3)} Y${o.purgeY.toFixed(3)} F${o.travelF}`);
+      out.push(`G1 Z${z.toFixed(3)} F600`);
+      let left = o.primeE;
+      while (left > 1e-6) { const c = Math.min(20, left); out.push(`G1 E${c.toFixed(3)} F120`); left -= c; }
+      ax = o.purgeX; ay = o.purgeY;
+      if (o.purgeLen > 0) {
+        out.push(`G1 X${(o.purgeX + o.purgeLen).toFixed(3)} Y${o.purgeY.toFixed(3)} E${ePurge.toFixed(5)} F300`);
+        ax = o.purgeX + o.purgeLen;
+      }
+      out.push(`G1 Z${(z + 5).toFixed(3)} F600`);
+      out.push("; unidir_laser: prime done");
+      st.primeLine = o.purgeLen > 0 ? ePurge : 0;
+      st.primeTotal = o.primeE + st.primeLine;
+    }
+
+    function flush() {
+      if (!chain.length) return;
+      pushAll(out, chainComments);
+      if (!armed) { out.push(`${o.armCmd} ; unidir_laser: laser power on (only here)`); armed = true; st.armAdded = true; }
+      if (!primed) prime();
+      let lastF = null;
+      for (const segs of splitRuns(chain)) {
+        if (ensureAt(segs[0][0], segs[0][1])) lastF = null;
+        out.push(pwmFor()); st.runs++;
+        for (const s of segs) {
+          const L = segLen(s);
+          if (L > 0) {
+            const c = ((s[2] - s[0]) * UX + (s[3] - s[1]) * UY) / L;
+            const sin = Math.sqrt(Math.max(0, 1 - c * c));
+            st.covAll += L;
+            if (c > 0 && o.overrun * sin <= width / 2) st.covOk += L;
+          }
+          const f = s[5] !== lastF ? ` F${Math.round(s[5])}` : "";
+          lastF = s[5];
+          out.push(`G1 X${s[2].toFixed(3)} Y${s[3].toFixed(3)} E${s[4].toFixed(5)}${f}`);
+          ax = s[2]; ay = s[3];
+        }
+        if (o.overrun > 0) {
+          // keep going in the print direction (never along a short end-of-line step) so the
+          // trailing spot runs over the end of the bead it just laid
+          const ox = ax + UX * o.overrun, oy = ay + UY * o.overrun;
+          out.push(`G1 X${ox.toFixed(3)} Y${oy.toFixed(3)}`);
+          ax = ox; ay = oy;
+        }
+        out.push(OFF);
+      }
+      out.push(`G1 F${Math.round(feed)}`);
+      chain = []; chainComments = [];
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].replace(/\r$/, "");
+      const [cmd, p] = parse(line);
+      const stripped = line.trim();
+
+      if (cmd === null) {
+        if (stripped.startsWith(";WIDTH:")) { const w = parseFloat(stripped.slice(7)); if (Number.isFinite(w) && w > 0) width = w; }
+        if (chain.length && !BREAK_TAGS.some((t) => stripped.startsWith(t))) { chainComments.push(line); continue; }
+        flush(); out.push(line); continue;
+      }
+      if (cmd === "M82") st.warnings.add("m82");
+      if (cmd === "G10" || cmd === "G11") {
+        st.hadG10 = true;
+        if (!o.retract) { flush(); st.stripped++; continue; }
+      }
+      // an old-style laser command in the source would bypass the PWM-only rule: drop it
+      if (cmd === "LASER_ON" || cmd === "LASER_OFF" || cmd === "M3" || cmd === "M4" || cmd === "M5" || (cmd === PWM)) {
+        flush(); st.legacyLaser++; continue;
+      }
+
+      if (cmd === "G0" || cmd === "G1") {
+        if (has(p, "F")) feed = p.F;
+        const hasXY = has(p, "X") || has(p, "Y");
+        const nx = has(p, "X") ? p.X : x, ny = has(p, "Y") ? p.Y : y;
+        const e = has(p, "E") ? p.E : 0;
+        const zChange = has(p, "Z") && Math.abs(p.Z - z) > 1e-6;
+        if (hasXY && e > 0) st.eIn += e;
+        if (hasXY && e > 0 && !zChange) { chain.push([x, y, nx, ny, e, feed]); x = nx; y = ny; continue; }
+        if (!hasXY && !has(p, "E") && !has(p, "Z") && chain.length) continue;   // feedrate-only line inside a path
+        flush();
+        if (hasXY) {
+          // a move that names both X and Y and lays no latex lands correctly from anywhere;
+          // anything else needs the nozzle at Orca's start point first
+          const selfContained = has(p, "X") && has(p, "Y") && !(e > 0);
+          if (!selfContained && ensureAt(x, y)) { st.restores++; out.push(`G1 F${Math.round(feed)}`); }
+          ax = nx; ay = ny;
+        }
+        x = nx; y = ny;
+        if (has(p, "Z")) z = p.Z;
+        out.push(line); continue;
+      }
+
+      flush();
+      if (cmd === "EXCLUDE_OBJECT_START") {
+        const m = line.match(/NAME=(\S+)/i);
+        curObj = m ? m[1] : null;
+      } else if (cmd === "EXCLUDE_OBJECT_END") curObj = null;
+      if (cmd === "G2" || cmd === "G3") {
+        st.warnings.add("arcs");
+        if (ensureAt(x, y)) { st.restores++; out.push(`G1 F${Math.round(feed)}`); }
+        if (has(p, "X")) x = p.X; if (has(p, "Y")) y = p.Y;
+        ax = x; ay = y;
+      }
+      if (cmd === "G28") { x = y = ax = ay = 0; }
+      if (cmd === "G92" && (has(p, "X") || has(p, "Y"))) st.warnings.add("g92xy");
+      out.push(line);
+    }
+    flush();
+    out.push(`${OFF} ; unidir_laser: safe end (PWM only)`);
+    if (o.addPower && !fileHasDisarm && armed) { out.push(`${o.disarmCmd} ; unidir_laser: laser power off`); st.disarmAdded = true; }
+    if (st.covAll > 0) {
+      const pct = 100 * st.covOk / st.covAll;
+      out.unshift(`; unidir_laser: ${pct.toFixed(1)} % of ${st.covAll.toFixed(0)} mm bead is inside the laser cone (spot offset ${o.overrun} mm); the rest runs too far off the laser axis to cure`);
+    }
+    let eOut = 0, minX = Infinity, cx = 0;
+    for (const l of out) {
+      const [c, p] = parse(l);
+      if (c === "G28") cx = 0;
+      if (c === "G0" || c === "G1" || c === "G2" || c === "G3") {
+        if (has(p, "X")) { cx = p.X; minX = Math.min(minX, cx); }
+        if ((c === "G0" || c === "G1") && (has(p, "X") || has(p, "Y")) && (p.E || 0) > 0) eOut += p.E;
+      }
+    }
+    st.eOut = eOut; st.minX = minX;
+    return { out, st };
+  }
+
+  // ---------- toolpath model for the plot ----------
+  function buildLayers(lines, o, processed) {
+    const UX = Math.cos(o.prefDir * Math.PI / 180), UY = Math.sin(o.prefDir * Math.PI / 180);
+    let x = 0, y = 0, z = 0, laser = false, width = o.defWidth, pendingTravel = [], known = false, inPrime = false;
+    const map = new Map();
+    for (const raw of lines) {
+      const line = raw.replace(/\r$/, "");
+      const [cmd, p] = parse(line);
+      if (cmd === null) {
+        const s = line.trim();
+        if (s.startsWith(";WIDTH:")) { const w = parseFloat(s.slice(7)); if (w > 0) width = w; }
+        if (s.startsWith("; unidir_laser: prime done")) inPrime = false;
+        else if (s.startsWith("; unidir_laser: prime")) inPrime = true;
+        continue;
+      }
+      if (cmd === o.pwmCmd.toUpperCase()) { laser = (p.S || 0) > 0; continue; }
+      if (cmd === "LASER_ON") { laser = true; continue; }
+      if (cmd === "LASER_OFF" || cmd === o.disarmCmd.toUpperCase()) { laser = false; continue; }
+      if (cmd !== "G0" && cmd !== "G1") continue;
+      const nx = has(p, "X") ? p.X : x, ny = has(p, "Y") ? p.Y : y;
+      if (has(p, "Z")) z = p.Z;
+      const L = Math.hypot(nx - x, ny - y);
+      const e = p.E || 0;
+      if (L > 1e-9) {
+        if (e > 0) {
+          const key = z.toFixed(3);
+          if (!map.has(key)) map.set(key, { z, ext: [], trav: [] });
+          const layer = map.get(key);
+          for (const t of pendingTravel) layer.trav.push(t);
+          pendingTravel = [];
+          const c = ((nx - x) * UX + (ny - y) * UY) / L;
+          const sin = Math.sqrt(Math.max(0, 1 - c * c));
+          let kind;
+          if (processed && !laser) kind = "off";
+          else if (c <= -Math.sin(o.perpTol * Math.PI / 180)) kind = "bad";
+          else if (c > 0 && o.overrun * sin <= width / 2) kind = "ok";
+          else kind = "warn";
+          layer.ext.push([x, y, nx, ny, kind, L, inPrime]);
+        } else if (known && !inPrime && (e === 0 || !has(p, "E"))) {
+          pendingTravel.push([x, y, nx, ny]);
+        }
+      }
+      if (has(p, "X") && has(p, "Y")) known = true;
+      x = nx; y = ny;
+    }
+    return [...map.values()].sort((a, b) => a.z - b.z);
+  }
+
+  // ---------- drawing ----------
+  const cv = $("cv"), ctx = cv.getContext("2d");
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  function computeBounds() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const L of state.layers.after.concat(state.layers.before)) for (const s of L.ext) {
+      if (s[6]) continue;
+      minX = Math.min(minX, s[0], s[2]); maxX = Math.max(maxX, s[0], s[2]);
+      minY = Math.min(minY, s[1], s[3]); maxY = Math.max(maxY, s[1], s[3]);
+    }
+    if (!Number.isFinite(minX)) return null;
+    return { minX, minY, maxX, maxY };
+  }
+
+  function draw() {
+    const box = cv.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.max(1, Math.round(box.width)), H = Math.max(1, Math.round(box.height));
+    if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const layers = state.layers[state.view];
+    const b = state.bounds;
+    if (!b || !layers.length) {
+      ctx.fillStyle = css("--dim"); ctx.font = "13px " + css("--body");
+      ctx.fillText("No extrusion moves found in this file.", 16, 28);
+      return;
+    }
+    const idx = Math.min(+$("layer").value, layers.length - 1);
+    const layer = layers[idx];
+    const pad = 36;
+    const spanX = Math.max(b.maxX - b.minX, 1), spanY = Math.max(b.maxY - b.minY, 1);
+    const sc = Math.min((W - 2 * pad) / spanX, (H - 2 * pad) / spanY);
+    const ox = (W - spanX * sc) / 2, oy = (H - spanY * sc) / 2;
+    const X = (v) => ox + (v - b.minX) * sc, Y = (v) => H - (oy + (v - b.minY) * sc);
+
+    // grid, 10 mm (5 mm if zoomed in)
+    const step = sc * 10 > 60 ? 5 : 10;
+    ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let gx = Math.ceil((b.minX - pad / sc) / step) * step; X(gx) < W; gx += step) { ctx.moveTo(Math.round(X(gx)) + .5, 0); ctx.lineTo(Math.round(X(gx)) + .5, H); }
+    for (let gy = Math.ceil((b.minY - pad / sc) / step) * step; Y(gy) > 0; gy += step) { ctx.moveTo(0, Math.round(Y(gy)) + .5); ctx.lineTo(W, Math.round(Y(gy)) + .5); }
+    ctx.stroke();
+
+    // travels
+    ctx.strokeStyle = css("--travel"); ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    for (const t of layer.trav) { ctx.moveTo(X(t[0]), Y(t[1])); ctx.lineTo(X(t[2]), Y(t[3])); }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // beads
+    const colors = { ok: css("--laser"), warn: css("--warn"), bad: css("--bad"), off: css("--bead-off") };
+    const bw = Math.max(2, Math.min(6, 0.6 * sc * 0.6));
+    ctx.lineCap = "round";
+    for (const kind of ["off", "warn", "bad", "ok"]) {
+      ctx.strokeStyle = colors[kind]; ctx.lineWidth = bw; ctx.beginPath();
+      for (const s of layer.ext) if (s[4] === kind) { ctx.moveTo(X(s[0]), Y(s[1])); ctx.lineTo(X(s[2]), Y(s[3])); }
+      ctx.stroke();
+    }
+    // direction chevrons on longer segments
+    ctx.lineWidth = 1.5;
+    for (const s of layer.ext) {
+      const px = s[5] * sc;
+      if (px < 34) continue;
+      const mx = (X(s[0]) + X(s[2])) / 2, my = (Y(s[1]) + Y(s[3])) / 2;
+      const a = Math.atan2(Y(s[3]) - Y(s[1]), X(s[2]) - X(s[0]));
+      ctx.strokeStyle = css("--panel");
+      ctx.beginPath();
+      ctx.moveTo(mx - 6 * Math.cos(a - .55), my - 6 * Math.sin(a - .55));
+      ctx.lineTo(mx, my);
+      ctx.lineTo(mx - 6 * Math.cos(a + .55), my - 6 * Math.sin(a + .55));
+      ctx.stroke();
+    }
+    // allowed-direction compass
+    const o = readSettings();
+    const ang = o.prefDir * Math.PI / 180;
+    const cx0 = W - 58, cy0 = 30;
+    ctx.strokeStyle = css("--fg"); ctx.fillStyle = css("--fg"); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx0 - 18 * Math.cos(ang), cy0 + 18 * Math.sin(ang)); ctx.lineTo(cx0 + 18 * Math.cos(ang), cy0 - 18 * Math.sin(ang)); ctx.stroke();
+    ctx.beginPath();
+    const hx = cx0 + 18 * Math.cos(ang), hy = cy0 - 18 * Math.sin(ang);
+    ctx.moveTo(hx, hy); ctx.lineTo(hx - 7 * Math.cos(-ang - .5), hy - 7 * Math.sin(-ang - .5)); ctx.lineTo(hx - 7 * Math.cos(-ang + .5), hy - 7 * Math.sin(-ang + .5)); ctx.closePath(); ctx.fill();
+    ctx.font = "11px " + css("--mono"); ctx.fillStyle = css("--dim"); ctx.textAlign = "center";
+    ctx.fillText("allowed", cx0, cy0 + 26);
+    ctx.textAlign = "left";
+    // scale bar
+    const sbmm = step;
+    ctx.strokeStyle = css("--dim"); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(14, H - 14); ctx.lineTo(14 + sbmm * sc, H - 14); ctx.stroke();
+    ctx.fillStyle = css("--dim"); ctx.fillText(`${sbmm} mm`, 14, H - 20);
+  }
+
+  // ---------- UI wiring ----------
+  function fmt(n, d = 1) { return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }); }
+
+  function run() {
+    const o = readSettings();
+    const dirName = (() => {
+      const a = ((o.prefDir % 360) + 360) % 360;
+      return { 0: "X+", 90: "Y+", 180: "X−", 270: "Y−" }[a] || `${a}°`;
+    })();
+    $("axisText").textContent = `print toward ${dirName} · spot ${o.overrun} mm behind`;
+    $("axisArrow").setAttribute("transform", `rotate(${-o.prefDir} 12 12)`);
+
+    const { out, st } = processGcode(state.srcLines, o);
+    state.out = out; state.stats = st;
+    state.layers.after = buildLayers(out, o, true);
+    state.layers.before = buildLayers(state.srcLines, o, false);
+    state.bounds = computeBounds();
+
+    const cov = st.covAll > 0 ? 100 * st.covOk / st.covAll : 0;
+    const level = st.covAll === 0 ? "none" : cov >= 95 ? "good" : cov >= 60 ? "warn" : "bad";
+    const lvl = { good: ["var(--good)", "ready"], warn: ["var(--warn)", "partial"], bad: ["var(--bad)", "won't cure"], none: ["var(--line)", "no beads"] }[level];
+    $("covTile").style.setProperty("--state", lvl[0]);
+    $("sCovChip").style.setProperty("--state", lvl[0]);
+    $("sCov").textContent = st.covAll > 0 ? `${fmt(cov)} %` : "–";
+    $("sCovChip").textContent = lvl[1];
+    $("sCovD").textContent = st.covAll > 0 ? `${fmt(st.covOk, 0)} of ${fmt(st.covAll, 0)} mm bead within reach of the spot` : "no extrusion found";
+    const eMatch = Math.abs(st.eIn - (st.eOut - st.primeLine)) < 1e-3 * Math.max(1, st.eIn);
+    $("sE").textContent = eMatch ? "conserved" : "MISMATCH";
+    $("sE").style.color = eMatch ? "var(--good)" : "var(--bad)";
+    $("sED").textContent = `${fmt(st.eIn, 2)} → ${fmt(st.eOut - st.primeLine, 2)} virtual mm` + (st.primeTotal > 0 ? ` · plus ${fmt(st.primeTotal, 1)} prime` : "");
+    $("sRuns").textContent = st.runs.toLocaleString();
+    const used = [...new Set([...st.pctUsed].map((p) => Math.round(p * 10) / 10))].sort((a, b) => a - b);
+    $("sRunsD").textContent = used.length ? `power ${used.map((p) => `${p} %`).join(", ")}` : "no laser runs";
+    const capPct = o.dutyCap * 100;
+    const over = o.power > capPct + 1e-9;
+    $("powerRead").textContent = over
+      ? `Above the macro cap (${fmt(capPct, 0)} %): clamped to S=255`
+      : `${o.pwmCmd} S=${sFromPct(o.power, o.dutyCap)} · ${fmt(o.power, 1)} % duty`;
+    $("powerRead").classList.toggle("over", over);
+    updateObjRows(o);
+    $("sTrav").textContent = st.travels.toLocaleString();
+    $("sTravD").textContent = `${fmt(st.travelMm, 0)} mm of extra travel` + (st.restores ? ` · ${st.restores} position fixes` : "") + (st.stripped ? ` · ${st.stripped} G10/G11 removed` : "");
+
+    const w = [];
+    const capHit = [...st.pctUsed].filter((p) => p > o.dutyCap * 100 + 1e-9);
+    if (capHit.length) w.push(`<b>Power above the macro cap.</b> ${capHit.map((p) => fmt(p, 1)).join(" %, ")} % is more than max_duty = ${o.dutyCap} allows; those runs are clamped to ${fmt(o.dutyCap * 100, 0)} %. Raise max_duty in the LASER_ON macro and the cap here if you really want more.`);
+    if (o.retract && st.hadG10) w.push("<b>This file keeps G10/G11.</b> Klipper rejects them unless printer.cfg has a [firmware_retraction] section. Untick “Firmware retract” to remove them instead.");
+    if (!o.prime && st.covAll > 0) w.push("<b>No prime.</b> Without one, the first beads go into plunger backlash and syringe pressure, and small parts can come out with no latex at all.");
+    if (st.warnings.has("m82")) w.push("<b>Absolute E found (M82).</b> Turn on “Use relative E distances” in Orca’s printer settings, otherwise the extrusion amounts will be wrong.");
+    if (st.warnings.has("arcs")) w.push("<b>Arc moves found (G2/G3).</b> Turn off Arc fitting in the process settings and set Z-hop type to Normal; arcs pass through unchanged and are not direction-corrected.");
+    if (level === "bad") w.push("<b>Most of this part won’t cure.</b> Walls and diagonal infill run off the laser axis. Use 0 walls and Aligned Rectilinear at 0° for every infill type.");
+    if (st.covAll > 0 && !o.addPower && !st.fileHasArm) w.push(`<b>No ${esc(o.armCmd)} in this file.</b> Tick “Switch laser power on at start” or add it to Orca’s start G-code, otherwise the module is never powered.`);
+    if (st.legacyLaser) w.push(`<b>${st.legacyLaser} old laser commands removed.</b> LASER_ON / LASER_OFF / M3 / M5 or earlier ${esc(o.pwmCmd)} lines in the source were dropped; the file now sets beam power only with ${esc(o.pwmCmd)}.`);
+    if (Number.isFinite(st.minX) && st.minX < o.xMin - 1e-6) w.push(`<b>A move goes to X ${fmt(st.minX, 1)}.</b> That is below your bed minimum of X ${fmt(o.xMin, 0)}. Check the purge start and the part position.`);
+    if (st.warnings.has("g92xy")) w.push("<b>G92 with X/Y found.</b> Position resets confuse the direction rewrite; remove them from the start G-code.");
+    $("warnings").innerHTML = w.map((t) => `<div class="warn-row">${t}</div>`).join("");
+
+    const slider = $("layer");
+    const n = Math.max(state.layers.after.length, 1);
+    slider.max = n - 1;
+    if (+slider.value > n - 1) slider.value = 0;
+    updateLayerLabel();
+    renderOutputPreview();
+    draw();
+  }
+
+  function updateLayerLabel() {
+    const layers = state.layers[state.view];
+    const i = Math.min(+$("layer").value, Math.max(layers.length - 1, 0));
+    $("layerOut").textContent = layers.length ? `${i + 1} / ${layers.length} · Z ${layers[i].z.toFixed(2)}` : "–";
+  }
+
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+  function renderOutputPreview() {
+    const o = readSettings();
+    const N = 220;
+    const pwm = o.pwmCmd.toUpperCase(), pw = [o.armCmd.toUpperCase(), o.disarmCmd.toUpperCase()];
+    const html = state.out.slice(0, N).map((l) => {
+      const c = l.trim().split(/\s+/)[0].toUpperCase();
+      if (c === pwm) return /\bS=0(\s|$)/i.test(l) ? `<span class="off">${esc(l)}</span>` : `<span class="on">${esc(l)}</span>`;
+      if (pw.includes(c)) return `<span class="ins">${esc(l)}</span>`;
+      if (l.trim().startsWith(";")) return `<span class="cm">${esc(l)}</span>`;
+      return esc(l);
+    }).join("\n");
+    $("outPre").innerHTML = html + (state.out.length > N ? `\n<span class="cm">; … ${(state.out.length - N).toLocaleString()} more lines</span>` : "");
+    $("outSummary").textContent = `Output preview (${state.out.length.toLocaleString()} lines, from ${state.srcLines.length.toLocaleString()})`;
+  }
+
+  // ---------- per-object power rows ----------
+  function initObjects() {
+    const o = readSettings();
+    state.objects = listObjects(state.srcLines);
+    const prev = state.objPct;
+    state.objPct = new Map();
+    for (const n of state.objects) {
+      if (prev.has(n)) { state.objPct.set(n, prev.get(n)); continue; }
+      const tok = n.match(/(?:^|_)S(\d{1,3}(?:\.\d+)?)(?=_|$)/i);   // Orca name like "bar S64"
+      state.objPct.set(n, tok ? Math.min(255, +tok[1]) / 255 * o.dutyCap * 100 : null);
+    }
+    const list = $("objList");
+    list.innerHTML = "";
+    $("objPanel").hidden = state.objects.length === 0;
+    state.objects.forEach((n, i) => {
+      const row = document.createElement("div");
+      row.className = "obj-row"; row.dataset.name = n;
+      row.innerHTML = `<div class="obj-name"></div>
+        <input type="range" min="0" max="100" step="0.5" id="objR${i}" aria-label="">
+        <input type="number" min="0" max="100" step="0.5" id="objN${i}" aria-label="">
+        <div class="s-read"></div>`;
+      row.querySelector(".obj-name").textContent = prettyName(n);
+      const r = row.querySelector("input[type=range]"), num = row.querySelector("input[type=number]");
+      r.setAttribute("aria-label", `Laser power for ${prettyName(n)}, percent`);
+      num.setAttribute("aria-label", `Laser power for ${prettyName(n)}, percent`);
+      const set = (v) => { const x = Math.min(100, Math.max(0, parseFloat(v))); if (!Number.isFinite(x)) return; state.objPct.set(n, x); schedule(); };
+      r.addEventListener("input", () => { num.value = r.value; set(r.value); });
+      num.addEventListener("input", () => { r.value = num.value; set(num.value); });
+      list.appendChild(row);
+    });
+    $("objHint").textContent = state.objects.length > 1
+      ? `${state.objects.length} objects. Each follows the default power until you change it; names with S tokens (e.g. "bar S64") start at that power.`
+      : "Change this to override the default power for this object.";
+  }
+  function updateObjRows(o) {
+    for (const row of $("objList").children) {
+      const v = state.objPct.get(row.dataset.name);
+      const pct = v === null || v === undefined ? o.power : v;
+      const inherit = v === null || v === undefined;
+      row.classList.toggle("inherit", inherit);
+      const r = row.querySelector("input[type=range]"), num = row.querySelector("input[type=number]");
+      if (document.activeElement !== num) num.value = Math.round(pct * 10) / 10;
+      if (document.activeElement !== r) r.value = pct;
+      const over = pct > o.dutyCap * 100 + 1e-9;
+      const s = row.querySelector(".s-read");
+      s.textContent = inherit ? `default · S=${sFromPct(pct, o.dutyCap)}` : `S=${sFromPct(pct, o.dutyCap)}`;
+      s.classList.toggle("over", over);
+    }
+  }
+
+  // sample part in OrcaSlicer's Klipper format
+  function sampleGcode() {
+    const f = (v) => { let s = v.toFixed(3).replace(/0+$/, "").replace(/\.$/, ""); return s.startsWith("0.") ? s.slice(1) : s; };
+    const name = "sample_bar_id_0_copy_0";
+    const g = ["; generated by OrcaSlicer (sample)", `EXCLUDE_OBJECT_DEFINE NAME=${name} CENTER=175,175`,
+      "M104 S0", "G90", "M83", "G28", "LASER_ARM", "G92 E0"];
+    const x0 = 160, y0 = 171, x1 = 190, y1 = 179, w = 0.6, h = 0.6, epm = 0.11755;
+    for (let L = 0; L < 2; L++) {
+      const z = h * (L + 1);
+      g.push(";LAYER_CHANGE", `;Z:${f(z)}`, `;HEIGHT:${f(h)}`, "G10", `G1 Z${f(z)} F600`, "G11", "G92 E0", `EXCLUDE_OBJECT_START NAME=${name}`);
+      const o = w / 2, pts = [[x0 + o, y0 + o], [x1 - o, y0 + o], [x1 - o, y1 - o], [x0 + o, y1 - o], [x0 + o, y0 + o]];
+      g.push(";TYPE:Outer wall", `;WIDTH:${w}`, "G10", `G1 X${f(pts[0][0])} Y${f(pts[0][1])} F6000`, "G11");
+      for (let i = 1; i < pts.length; i++) g.push(`G1 X${f(pts[i][0])} Y${f(pts[i][1])} E${f(epm * Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))} F300`);
+      const ix0 = x0 + w * 1.5, ix1 = x1 - w * 1.5, iy0 = y0 + w * 1.5, iy1 = y1 - w * 1.5;
+      g.push(";TYPE:Internal solid infill", `;WIDTH:${w}`, "G10");
+      let first = true, i = 0;
+      for (let yy = iy0; yy <= iy1 + 1e-6; yy += w, i++) {
+        const [a, bb] = i % 2 === 0 ? [ix0, ix1] : [ix1, ix0];
+        if (first) { g.push(`G1 X${f(a)} Y${f(yy)} F6000`, "G11"); first = false; }
+        else g.push(`G1 X${f(a)} Y${f(yy)} E${f(epm * w)} F300`);
+        g.push(`G1 X${f(bb)} Y${f(yy)} E${f(epm * (ix1 - ix0))} F300`);
+      }
+      g.push(`EXCLUDE_OBJECT_END NAME=${name}`);
+    }
+    g.push("G10", "LASER_DISARM", "G1 Z30 F600");
+    return g;
+  }
+
+  function loadSample() {
+    state.srcLines = sampleGcode(); state.srcName = "sample_bar.gcode"; state.isSample = true;
+    $("fname").innerHTML = `sample_bar.gcode <span class="pill">Sample</span>`;
+    $("fhint").textContent = "Example part: 30 × 8 mm bar, one wall plus X raster, 2 layers. Drop your Orca export here or choose a file.";
+    $("layer").value = 0; toast("");
+    initObjects();
+    run();
+  }
+  function loadFile(file) {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      state.srcLines = String(r.result).split("\n");
+      state.srcName = file.name; state.isSample = false;
+      $("fname").textContent = file.name;
+      $("fhint").textContent = `${(file.size / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 })} KB · ${state.srcLines.length.toLocaleString()} lines. Settings changes re-process it instantly.`;
+      $("layer").value = 0; toast("");
+      state.objPct = new Map();
+      initObjects();
+      run();
+    };
+    r.onerror = () => toast("Couldn't read that file. Try exporting it from Orca again.", true);
+    r.readAsText(file);
+  }
+
+  function toast(msg, err) { const t = $("toast"); t.textContent = msg; t.classList.toggle("err", !!err); }
+
+  // downloads: the viewer allows .txt, so the processed file is offered as .gcode.txt
+  const inViewer = !!(window.claude && typeof window.claude.use === "function");
+  const dlPromise = inViewer ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null);
+  if (!inViewer) $("saveNote").textContent = "Saves a .gcode file straight to your downloads.";
+
+  function outName(ext) {
+    const base = state.srcName.replace(/\.(gcode|gco|g|nc|txt)$/i, "");
+    return `${base}_unidir.${ext}`;
+  }
+  function anchorSave(name, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  $("saveBtn").addEventListener("click", async () => {
+    const text = state.out.join("\n") + "\n";
+    const dl = await dlPromise;
+    if (dl) {
+      const name = outName("gcode.txt");
+      try {
+        await dl.save({ filename: name, data: new Blob([text]) });
+        toast(`Saved ${name}. Rename it to .gcode before uploading.`);
+      } catch (e) {
+        const code = e && e.code;
+        if (code === "declined") toast("Save cancelled.");
+        else if (code === "rate_limited") toast("A save prompt is already open. Finish that one first.", true);
+        else toast("Saving isn't available in this view. Use Copy instead.", true);
+      }
+    } else if (!inViewer) {
+      anchorSave(outName("gcode"), text);
+      toast(`Saved ${outName("gcode")}.`);
+    } else {
+      toast("Saving isn't available in this view. Use Copy instead.", true);
+    }
+  });
+  $("copyBtn").addEventListener("click", () => {
+    const text = state.out.join("\n") + "\n";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => toast(`Copied ${state.out.length.toLocaleString()} lines.`),
+        () => toast("Copy was blocked here. Use Save instead.", true));
+    } else toast("Copy isn't available here. Use Save instead.", true);
+  });
+
+  $("pickBtn").addEventListener("click", (e) => { e.preventDefault(); $("file").click(); });
+  $("sampleBtn").addEventListener("click", (e) => { e.preventDefault(); loadSample(); });
+  $("file").addEventListener("change", (e) => { loadFile(e.target.files[0]); e.target.value = ""; });
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((t) => window.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => window.addEventListener(t, (e) => { e.preventDefault(); if (t === "drop" || e.target === document.documentElement) drop.classList.remove("over"); }));
+  window.addEventListener("drop", (e) => { drop.classList.remove("over"); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+  let timer = null;
+  function schedule() { clearTimeout(timer); timer = setTimeout(run, 150); }
+  for (const k of KEYS) $(k).addEventListener("input", schedule);
+  $("power").addEventListener("input", () => { $("powerNum").value = $("power").value; });
+  $("powerNum").addEventListener("input", () => {
+    const v = parseFloat($("powerNum").value);
+    if (Number.isFinite(v)) { $("power").value = Math.min(100, Math.max(0, v)); schedule(); }
+  });
+  $("objReset").addEventListener("click", () => { for (const n of state.objects) state.objPct.set(n, null); run(); });
+  $("resetBtn").addEventListener("click", () => {
+    for (const k of KEYS) { const el = $(k); if (el.type === "checkbox") el.checked = DEFAULTS[k]; else el.value = DEFAULTS[k]; }
+    $("powerNum").value = $("power").value;
+    run();
+  });
+  $("layer").addEventListener("input", () => { updateLayerLabel(); draw(); });
+  function setView(v) {
+    state.view = v;
+    $("viewBefore").setAttribute("aria-pressed", String(v === "before"));
+    $("viewAfter").setAttribute("aria-pressed", String(v === "after"));
+    const n = Math.max(state.layers[v].length, 1);
+    $("layer").max = n - 1; if (+$("layer").value > n - 1) $("layer").value = 0;
+    updateLayerLabel(); draw();
+  }
+  $("viewBefore").addEventListener("click", () => setView("before"));
+  $("viewAfter").addEventListener("click", () => setView("after"));
+  new ResizeObserver(() => draw()).observe(cv.parentElement);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  loadSettings();
+  $("powerNum").value = $("power").value;
+  loadSample();
+  window.__pp = { processGcode, sampleGcode, parse };
+})();
+</script>
+</body></html>

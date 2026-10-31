@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software or data, please cite it as below."
+title: "Latex Voron 2.4 3D printer: laser-assisted 3D printing of water-based latex (TDK)"
+type: software
+authors:
+  - family-names: "Prithul"
+    given-names: "Iqbal Samin"
+    affiliation: "Budapest University of Technology and Economics (BME), Faculty of Mechanical Engineering, Department of Polymer Engineering"
+repository-code: "https://github.com/Prithul0218/Latex-Voron-2.4-3D-printer-TDK"
+license: MIT
+version: "0.1.0"
+date-released: "2026-10-31"
+keywords:
+  - additive manufacturing
+  - latex
+  - natural rubber
+  - direct ink writing
+  - laser curing
+  - Klipper
+  - Voron
+# doi: 10.5281/zenodo.XXXXXXX   <- add after the first Zenodo release
