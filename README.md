@@ -5,7 +5,7 @@ Software, firmware notes and slicer settings for a Voron 2.4 adapted to extrude 
 This repository accompanies a TDK research paper (BME, Department of Polymer Engineering):
 *System development and process characterization for laser-assisted 3D printing of water-based latex.*
 
-> **DOI:** to be added after the first Zenodo release (`10.5281/zenodo.XXXXXXX`).
+[![DOI](https://zenodo.org/badge/1441220944.svg)](https://doi.org/10.5281/zenodo.23845520)
 
 ## What's in here
 
