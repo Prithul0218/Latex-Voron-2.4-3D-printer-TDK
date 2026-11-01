@@ -1,12 +1,12 @@
 # OrcaSlicer settings
 
-Start from a Voron 2.4 350 profile and change the settings below. A profile export (`.orca_printer` / `.json`) **will be added**.
+Start from a Voron 2.4 profile and change the settings below.
 
 ## Printer
 | Tab | Setting |
 |---|---|
 | Basic | G-code flavor: Klipper; use relative E distances: on |
-| Extruder | Nozzle diameter 1.04 mm; layer height limits wide enough for your recipe (e.g. 0.05–0.8 mm) |
+| Extruder | Nozzle diameter = your needle's inner diameter; layer height limits wide enough for your recipe |
 | Extruder → Retraction | Length 0; Z-hop as needed; **Z-hop type: Normal** (Spiral produces arcs); wipe off |
 | Others | Exclude objects: on (for per-object laser power) |
 
@@ -19,9 +19,9 @@ Start from a Voron 2.4 350 profile and change the settings below. A profile expo
 ## Process (unidirectional raster)
 | Tab | Setting |
 |---|---|
-| Quality | Layer height and line width from the bead tests (see `docs/experiments.md`); arc fitting **off** |
-| Strength | Wall loops **0**; top/bottom shells 0; sparse infill 100 %; all infill patterns **Aligned Rectilinear**, direction **0°**, rotate solid infill off |
-| Speed | Print ≤ 5 mm/s; travel 30 mm/s; acceleration 300 mm/s² (feed tube vibration) |
+| Quality | Layer height and line width from your bead calibration (`gcode-generators/gen_bead_tests.py`); arc fitting **off** |
+| Strength | Wall loops **0**; top/bottom shells 0; sparse infill 100 %; all infill patterns **Aligned Rectilinear**, direction along the print axis (0° for X), rotate solid infill off |
+| Speed | Slow printing (a few mm/s) and moderate travel and acceleration suit syringe extrusion |
 | Others | Spiral vase off; post-processing: none (use the browser post-processor) |
 
 ## Machine G-code

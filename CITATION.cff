@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software or data, please cite it as below."
-title: "Latex Voron 2.4 3D printer: laser-assisted 3D printing of water-based latex (TDK)"
+title: "Latex Voron 2.4 3D printer: software for laser-assisted printing of water-based latex (TDK)"
 type: software
 authors:
   - family-names: "Prithul"

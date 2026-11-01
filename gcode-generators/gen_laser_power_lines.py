@@ -17,7 +17,7 @@ import math
 
 # ------------------------------- PARAMETERS ------------------------------------------
 LAYER_H      = 0.60     # mm, nozzle height above bed for the lines
-LINE_W       = 0.60     # mm, nominal bead width (thinner than the 1.04 nozzle: drawn-down bead)
+LINE_W       = 0.60     # mm, nominal bead width
 FIL_D        = 1.75     # virtual filament diameter (must match Klipper / Orca)
 ROT_DIST     = 293.88   # Klipper rotation_distance, only used for the stats header
 PRINT_SPEED  = 5.0      # mm/s

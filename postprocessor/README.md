@@ -4,14 +4,14 @@ A single-file browser tool, [`latex-laser-postprocessor.html`](latex-laser-postp
 
 ## Why it exists
 
-The laser spot sits ≈1 mm behind the nozzle on one side (X− on this printer), so a bead is only cured when the nozzle moves away from the spot (toward X+). OrcaSlicer has no option to print in one direction only.
+When the laser spot trails the nozzle, a bead is only cured when the nozzle moves away from the spot. OrcaSlicer has no option to print in one direction only.
 
-When a line runs at angle φ to the allowed direction, the spot lands d·sin φ to the side of the bead (d = spot distance). It misses once that offset exceeds half the bead width. For d = 1 mm and a 0.6 mm bead, the limit is about 17°.
+When a line runs at angle φ to the allowed direction, the spot lands d·sin φ to the side of the bead (d = spot distance). It misses once that offset exceeds half the bead width. For d = 1 mm and a 0.6 mm bead, the limit is about 17°. The allowed direction and spot offset are settings in the tool.
 
 ## What it does
 
 1. **One-direction printing:** splits each extrusion path wherever it turns back toward the laser, prints those pieces reversed, and inserts lifted travels between them. Total extrusion is unchanged.
-2. **Laser per line:** `LASER_PWM S=<power>` before each piece and `LASER_PWM S=0` after it. A laser-on overrun (default 1 mm, the spot distance) continues past the bead end so the trailing spot covers it. The overrun always runs in the print direction.
+2. **Laser per line:** `LASER_PWM S=<power>` before each piece and `LASER_PWM S=0` after it. A laser-on overrun (set to the spot distance) continues past the bead end so the trailing spot covers it. The overrun always runs in the print direction.
 3. **Power pin only at start and end:** adds `LASER_ARM` once before the first bead and `LASER_DISARM` once at the end, unless the file already contains them. Any other laser commands in the source (`LASER_ON`, `LASER_OFF`, `M3`/`M4`/`M5`, earlier `LASER_PWM`) are removed. During the print only the PWM value changes.
 4. **Laser power in the interface:** a global power (% duty) plus a slider per object, so a power ladder can be set up on one Orca plate. Object names containing a token like `S128` start at that power. Requires "Exclude objects" in Orca and `[exclude_object]` in Klipper.
 5. **Syringe prime (optional):** stationary take-up plus a laser-off purge line before the first bead (default X50, Y320, toward X+).
